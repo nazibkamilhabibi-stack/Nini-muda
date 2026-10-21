@@ -1,0 +1,358 @@
+```html
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kuis Sahabat Interaktif</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="w-full max-w-md bg-slate-800 rounded-2xl shadow-2xl border border-slate-700/50 p-6 md:p-8 animate-fade-in relative overflow-hidden">
+        <!-- Background Glow Elements -->
+        <div class="absolute -top-12 -right-12 w-32 h-32 bg-indigo-500/20 rounded-full blur-2xl pointer-events-none"></div>
+        <div class="absolute -bottom-12 -left-12 w-32 h-32 bg-pink-500/20 rounded-full blur-2xl pointer-events-none"></div>
+
+        <div class="text-center mb-6">
+            <span class="inline-block px-3 py-1 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-full text-xs font-semibold uppercase tracking-wider mb-2">
+                Fun Quiz
+            </span>
+            <h1 class="text-2xl font-bold text-white">Kuis Sahabat 🤝</h1>
+            <p class="text-sm text-slate-400 mt-1" id="quiz-subtitle">Isi nama kamu dulu yuk sebelum mulai!</p>
+        </div>
+
+        <div id="name-screen" class="space-y-4 animate-fade-in">
+            <div>
+                <label for="user-name" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Nama Kamu:</label>
+                <input type="text" id="user-name" placeholder="Ketik nama kamu di sini..." 
+                       class="w-full p-4 rounded-xl bg-slate-700/50 border border-slate-600 focus:border-indigo-500 focus:outline-none text-white placeholder-slate-400 transition">
+                <p id="name-error" class="text-rose-400 text-xs mt-1.5 hidden">Isi nama kamu dulu ya!</p>
+            </div>
+            <button onclick="startQuiz()" class="w-full py-4 px-4 bg-gradient-to-r from-indigo-500 to-pink-500 text-white font-semibold rounded-xl hover:opacity-90 transition active:scale-95 shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2">
+                Mulai Kuis 🚀
+            </button>
+        </div>
+
+        <div id="progress-container" class="hidden w-full bg-slate-700/50 rounded-full h-2 mb-6 overflow-hidden">
+            <div id="progress-bar" class="bg-gradient-to-r from-indigo-500 to-pink-500 h-full w-0 transition-all duration-300"></div>
+        </div>
+
+        <div id="quiz-container" class="hidden space-y-4">
+            <!-- Questions will be rendered dynamically -->
+        </div>
+
+        <div id="result-container" class="hidden text-center py-2 space-y-6 animate-fade-in">
+            <div class="text-5xl mb-2" id="result-emoji">🎉</div>
+            <div>
+                <h2 class="text-2xl font-bold text-white" id="result-title">Hasil Kuis</h2>
+                <p class="text-slate-300 mt-2 text-sm leading-relaxed" id="result-text"></p>
+                <span id="time-badge" class="inline-block mt-3 px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-full text-xs font-semibold"></span>
+            </div>
+
+            <!-- Leaderboard Top 10 -->
+            <div class="bg-slate-900/60 p-4 rounded-xl text-left border border-slate-700/50 space-y-3">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <h3 class="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                        🏆 Top 10 Tercepat
+                    </h3>
+                    <span class="text-[10px] text-slate-400">Waktu Jawab</span>
+                </div>
+                <div id="leaderboard-list" class="space-y-2 text-sm">
+                    <!-- Leaderboard items rendered dynamically -->
+                </div>
+            </div>
+
+            <!-- Summary of Choices -->
+            <div class="bg-slate-900/60 p-4 rounded-xl text-left border border-slate-700/50 space-y-3">
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Pilihan <span id="summary-name" class="text-indigo-400"></span>:</h3>
+                <div id="summary-list" class="space-y-2 text-sm"></div>
+            </div>
+
+            <button onclick="restartQuiz()" class="w-full py-3 px-4 bg-gradient-to-r from-indigo-500 to-pink-500 text-white font-semibold rounded-xl hover:opacity-90 transition active:scale-95 shadow-lg shadow-indigo-500/25">
+                Ulangi Kuis 🔄
+            </button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Configuration (Uses provided global environment or fallback)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'kuis-sahabat-app';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "AIzaSyDummyKeyForInitializationOnly",
+            authDomain: "dummy.firebaseapp.com",
+            projectId: "dummy-project",
+            storageBucket: "dummy.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:123456789:web:123456"
+        };
+
+        let db = null;
+        let auth = null;
+        let currentUser = null;
+        let isFirebaseActive = false;
+
+        try {
+            const app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                await signInWithCustomToken(auth, __initial_auth_token);
+            } else {
+                await signInAnonymously(auth);
+            }
+            currentUser = auth.currentUser;
+            isFirebaseActive = true;
+        } catch (err) {
+            console.warn("Firebase tidak terkonfigurasi, beralih ke penyimpanan lokal sementara:", err);
+        }
+
+        const quizData = [
+            {
+                question: "1. Kamu kenal aku nggak?",
+                options: [
+                    { label: "A. Gak", value: "gak_kenal" },
+                    { label: "B. Kenal", value: "kenal" }
+                ]
+            },
+            {
+                question: "2. Kamu mau jadi sahabat aku gak?",
+                options: [
+                    { label: "A. Gak ah kamu mirip amba", value: "tolak" },
+                    { label: "B. Mau dong", value: "terima" }
+                ]
+            }
+        ];
+
+        let currentQuestion = 0;
+        let userAnswers = [];
+        let userName = "";
+        let startTime = 0;
+        let totalTimeTaken = 0;
+
+        // Local fallback storage for leaderboard if Firebase is absent
+        let localLeaderboard = JSON.parse(localStorage.getItem('quiz_leaderboard') || '[]');
+
+        window.startQuiz = function() {
+            const nameInput = document.getElementById('user-name');
+            const nameError = document.getElementById('name-error');
+            
+            if (!nameInput.value.trim()) {
+                nameError.classList.remove('hidden');
+                return;
+            }
+            
+            nameError.classList.add('hidden');
+            userName = nameInput.value.trim();
+
+            document.getElementById('name-screen').classList.add('hidden');
+            document.getElementById('progress-container').classList.remove('hidden');
+            document.getElementById('quiz-container').classList.remove('hidden');
+            document.getElementById('quiz-subtitle').innerText = `Halo ${userName}, jawab secepat mungkin ya! ⏱️`;
+
+            startTime = Date.now();
+            renderQuestion();
+        }
+
+        function renderQuestion() {
+            const quizContainer = document.getElementById('quiz-container');
+            const current = quizData[currentQuestion];
+            
+            const progress = ((currentQuestion) / quizData.length) * 100;
+            document.getElementById('progress-bar').style.width = `${progress}%`;
+
+            let html = `
+                <div class="animate-fade-in space-y-4">
+                    <h2 class="text-lg font-semibold text-slate-100">${current.question}</h2>
+                    <div class="space-y-3">
+            `;
+
+            current.options.forEach((opt) => {
+                html += `
+                    <button onclick="selectOption('${opt.value}', '${opt.label}')" 
+                            class="w-full text-left p-4 rounded-xl bg-slate-700/40 hover:bg-slate-700 border border-slate-600/50 hover:border-indigo-500 transition-all duration-200 flex items-center justify-between group active:scale-[0.98]">
+                        <span class="font-medium text-slate-200 group-hover:text-white">${opt.label}</span>
+                        <span class="text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity">➔</span>
+                    </button>
+                `;
+            });
+
+            html += `</div></div>`;
+            quizContainer.innerHTML = html;
+        }
+
+        window.selectOption = function(value, label) {
+            userAnswers.push({
+                question: quizData[currentQuestion].question,
+                answer: label,
+                value: value
+            });
+
+            currentQuestion++;
+
+            if (currentQuestion < quizData.length) {
+                renderQuestion();
+            } else {
+                totalTimeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
+                saveAndShowResult();
+            }
+        }
+
+        async function saveAndShowResult() {
+            const scoreData = {
+                name: userName,
+                timeSeconds: parseFloat(totalTimeTaken),
+                createdAt: new Date().toISOString()
+            };
+
+            // Save score
+            if (isFirebaseActive && currentUser) {
+                try {
+                    const leaderboardCol = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
+                    await addDoc(leaderboardCol, scoreData);
+                } catch (e) {
+                    console.error("Gagal menyimpan skor ke cloud:", e);
+                    localLeaderboard.push(scoreData);
+                    localStorage.setItem('quiz_leaderboard', JSON.stringify(localLeaderboard));
+                }
+            } else {
+                localLeaderboard.push(scoreData);
+                localStorage.setItem('quiz_leaderboard', JSON.stringify(localLeaderboard));
+            }
+
+            showResult();
+            listenLeaderboard();
+        }
+
+        function showResult() {
+            document.getElementById('progress-bar').style.width = '100%';
+            document.getElementById('quiz-container').classList.add('hidden');
+            document.getElementById('progress-container').classList.add('hidden');
+            document.getElementById('quiz-subtitle').classList.add('hidden');
+            
+            const resultContainer = document.getElementById('result-container');
+            const resultEmoji = document.getElementById('result-emoji');
+            const resultTitle = document.getElementById('result-title');
+            const resultText = document.getElementById('result-text');
+            const summaryList = document.getElementById('summary-list');
+            const summaryName = document.getElementById('summary-name');
+            const timeBadge = document.getElementById('time-badge');
+
+            summaryName.innerText = userName;
+            timeBadge.innerText = `⏱️ Waktu Selesai: ${totalTimeTaken} detik`;
+
+            const ans1 = userAnswers[0].value;
+            const ans2 = userAnswers[1].value;
+
+            if (ans1 === 'kenal' && ans2 === 'terima') {
+                resultEmoji.innerText = "🎉🥳";
+                resultTitle.innerText = `Sahabat Sejati!`;
+                resultText.innerText = `Yeay ${userName}! Kamu kenal aku dan mau jadi sahabat aku. Yuks berteman baik terus!`;
+            } else if (ans2 === 'tolak') {
+                resultEmoji.innerText = "🗿😅";
+                resultTitle.innerText = "Waduh Parah!";
+                resultText.innerText = `${userName}, kamu tega banget bilang aku mirip amba... Tapi tetep asik kok!`;
+            } else if (ans1 === 'gak_kenal' && ans2 === 'terima') {
+                resultEmoji.innerText = "🤝✨";
+                resultTitle.innerText = "Teman Baru!";
+                resultText.innerText = `Halo ${userName}! Meskipun belum kenal-kenal banget, tapi makasih ya udah mau jadi sahabat aku!`;
+            } else {
+                resultEmoji.innerText = "😭💔";
+                resultTitle.innerText = "Ditolak Mentah-Mentah";
+                resultText.innerText = `Parah banget ${userName}... Udah gak kenal, gak mau berteman lagi! Teganya dirimu!`;
+            }
+
+            summaryList.innerHTML = userAnswers.map(ans => `
+                <div class="border-b border-slate-800 pb-2 last:border-0 last:pb-0">
+                    <p class="text-xs text-slate-400">${ans.question}</p>
+                    <p class="font-semibold text-indigo-300 mt-0.5">${ans.answer}</p>
+                </div>
+            `).join('');
+
+            resultContainer.classList.remove('hidden');
+        }
+
+        function listenLeaderboard() {
+            if (isFirebaseActive && currentUser) {
+                const leaderboardCol = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
+                onSnapshot(leaderboardCol, (snapshot) => {
+                    let items = [];
+                    snapshot.forEach(doc => items.push(doc.data()));
+                    renderLeaderboardUI(items);
+                }, (err) => {
+                    console.error("Error leaderboard snapshot:", err);
+                    renderLeaderboardUI(localLeaderboard);
+                });
+            } else {
+                renderLeaderboardUI(localLeaderboard);
+            }
+        }
+
+        function renderLeaderboardUI(dataList) {
+            const leaderboardList = document.getElementById('leaderboard-list');
+            
+            // Sort in JS by timeSeconds ascending (fastest first)
+            const sortedData = [...dataList]
+                .sort((a, b) => parseFloat(a.timeSeconds) - parseFloat(b.timeSeconds))
+                .slice(0, 10);
+
+            if (sortedData.length === 0) {
+                leaderboardList.innerHTML = `<p class="text-xs text-slate-500 italic">Belum ada skor tercatat.</p>`;
+                return;
+            }
+
+            leaderboardList.innerHTML = sortedData.map((item, index) => {
+                let medal = `${index + 1}.`;
+                if (index === 0) medal = '🥇';
+                else if (index === 1) medal = '🥈';
+                else if (index === 2) medal = '🥉';
+
+                const isCurrent = item.name === userName && Math.abs(item.timeSeconds - totalTimeTaken) < 0.01;
+
+                return `
+                    <div class="flex items-center justify-between p-2 rounded-lg ${isCurrent ? 'bg-indigo-500/20 border border-indigo-500/30' : 'bg-slate-800/50'} text-xs">
+                        <div class="flex items-center gap-2 overflow-hidden">
+                            <span class="font-bold w-5 text-center">${medal}</span>
+                            <span class="font-semibold text-slate-200 truncate ${isCurrent ? 'text-indigo-300' : ''}">${item.name}</span>
+                        </div>
+                        <span class="font-mono text-amber-300 font-bold ml-2">${item.timeSeconds}s</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        window.restartQuiz = function() {
+            currentQuestion = 0;
+            userAnswers = [];
+            userName = "";
+            totalTimeTaken = 0;
+            document.getElementById('user-name').value = "";
+            document.getElementById('name-screen').classList.remove('hidden');
+            document.getElementById('quiz-container').classList.add('hidden');
+            document.getElementById('progress-container').classList.add('hidden');
+            document.getElementById('quiz-subtitle').classList.remove('hidden');
+            document.getElementById('quiz-subtitle').innerText = "Isi nama kamu dulu yuk sebelum mulai!";
+            document.getElementById('result-container').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
+```
